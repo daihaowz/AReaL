@@ -67,6 +67,10 @@ class AsyncRewardWrapper:
 
     The reward function and its arguments must be picklable since they
     are dispatched to worker processes via ``ProcessPoolExecutor``.
+
+    ``raise_on_timeout`` lets strict verifiers distinguish an unavailable
+    reward from an incorrect model answer. The default retains the existing
+    zero-reward fallback for callers that rely on it.
     """
 
     _executors: dict[int, ProcessPoolExecutor] = {}
@@ -79,9 +83,11 @@ class AsyncRewardWrapper:
         timeout_seconds: float = 15,
         max_workers: int | None = None,
         max_retries: int = 3,
+        raise_on_timeout: bool = False,
     ):
         self.reward_fn = reward_fn
         self.timeout_seconds = timeout_seconds
+        self.raise_on_timeout = raise_on_timeout
         if max_workers is None:
             cpu_count = os.cpu_count() or 1
             device_count = _get_device_count_safely()
@@ -152,12 +158,19 @@ class AsyncRewardWrapper:
                 )
                 return await asyncio.wait_for(future, timeout=self.timeout_seconds)
             except TimeoutError:
+                action = (
+                    ("Raising." if self.raise_on_timeout else "Returning 0.")
+                    if is_last
+                    else "Retrying..."
+                )
                 logger.warning(
                     f"Computing reward timeout after {self.timeout_seconds}s "
                     f"(attempt {attempt + 1}/{self.max_retries + 1}). "
-                    f"{'Returning 0.' if is_last else 'Retrying...'}"
+                    f"{action}"
                 )
                 if is_last:
+                    if self.raise_on_timeout:
+                        raise
                     return 0.0
             except BrokenProcessPool:
                 logger.warning(

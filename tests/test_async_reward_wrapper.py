@@ -2,7 +2,7 @@
 
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 
 import pytest
@@ -80,6 +80,28 @@ class TestAsyncRewardWrapperTimeout:
         result = await wrapper(10.0)
         assert isinstance(result, float)
         assert result == 0.0
+
+    @pytest.mark.asyncio
+    async def test_strict_timeout_raises_after_retries(self, monkeypatch):
+        wrapper = AsyncRewardWrapper(
+            _add_reward,
+            timeout_seconds=0.01,
+            max_workers=1,
+            max_retries=0,
+            raise_on_timeout=True,
+        )
+        AsyncRewardWrapper._executors[1].shutdown(wait=True, cancel_futures=True)
+
+        class NeverCompletes:
+            def submit(self, _fn):
+                return Future()
+
+            def shutdown(self, **_kwargs):
+                pass
+
+        monkeypatch.setitem(AsyncRewardWrapper._executors, 1, NeverCompletes())
+        with pytest.raises(TimeoutError):
+            await wrapper(1.0, 2.0)
 
 
 class TestAsyncRewardWrapperBrokenPool:

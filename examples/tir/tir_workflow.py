@@ -55,6 +55,9 @@ class TIRWorkflow(RolloutWorkflow):
         tir_config: TIRConfig,
         enable_thinking: bool = False,
         prompt_template: str | None = None,
+        fail_on_reward_timeout: bool = False,
+        reward_timeout_seconds: float = 15,
+        reward_max_retries: int = 3,
     ):
         super().__init__()
         if isinstance(tokenizer, str):
@@ -89,7 +92,12 @@ class TIRWorkflow(RolloutWorkflow):
         self.max_turns = tir_config.max_turns
         self.max_length = tir_config.max_length
         self.enable_thinking = enable_thinking
-        self.async_reward_fn = AsyncRewardWrapper(reward_fn)
+        self.async_reward_fn = AsyncRewardWrapper(
+            reward_fn,
+            timeout_seconds=reward_timeout_seconds,
+            max_retries=reward_max_retries,
+            raise_on_timeout=fail_on_reward_timeout,
+        )
 
         self.start_markers = self.tool_manager.get_all_start_markers()
         self.end_markers = self.tool_manager.get_all_end_markers()

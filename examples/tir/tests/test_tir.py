@@ -103,11 +103,17 @@ async def test_tir_workflow():
         gconfig=GenerationHyperparameters(max_new_tokens=32, max_tokens=256),
         tokenizer=tokenizer,
         tir_config=TIRConfig(max_turns=3, max_length=2000),
+        fail_on_reward_timeout=True,
+        reward_timeout_seconds=60,
+        reward_max_retries=0,
     )
 
     assert workflow.tool_manager is not None
     assert workflow.start_markers
     assert workflow.end_markers
+    assert workflow.async_reward_fn.raise_on_timeout
+    assert workflow.async_reward_fn.timeout_seconds == 60
+    assert workflow.async_reward_fn.max_retries == 0
 
     await workflow.tool_manager.acleanup()
 
