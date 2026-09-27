@@ -10,9 +10,10 @@ from areal.api.cli_args import GenerationHyperparameters
 # Add the parent directory to the path so we can import TIR modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tir_workflow import TIRConfig, TIRWorkflow  # noqa: E402
-from tool_manager import ToolCallStatus, ToolManager  # noqa: E402
-from train_tir import math_reward_fn  # noqa: E402
+from examples.tir.prompts import has_complete_boxed_answer  # noqa: E402
+from examples.tir.tir_workflow import TIRConfig, TIRWorkflow  # noqa: E402
+from examples.tir.tool_manager import ToolCallStatus, ToolManager  # noqa: E402
+from examples.tir.train_tir import math_reward_fn  # noqa: E402
 
 
 class FakeTokenizer:
@@ -47,6 +48,18 @@ async def test_tool_manager():
         )
         assert calc_status == ToolCallStatus.SUCCESS
         assert calc_result == "10"
+
+        unsafe_result, unsafe_status = await calc_manager.aexecute_tool_call(
+            "<calculator>9**999999</calculator>"
+        )
+        assert unsafe_status == ToolCallStatus.ERROR
+        assert "Unsupported calculator operator" in unsafe_result
+
+        huge_result, huge_status = await calc_manager.aexecute_tool_call(
+            "<calculator>999999999999 * 999999999999</calculator>"
+        )
+        assert huge_status == ToolCallStatus.ERROR
+        assert "exceeds its limit" in huge_result
 
         # Test malformed Python tool input.
         empty_result, empty_status = await python_manager.aexecute_tool_call(
@@ -97,6 +110,49 @@ async def test_tir_workflow():
     assert workflow.end_markers
 
     await workflow.tool_manager.acleanup()
+
+
+@pytest.mark.asyncio
+async def test_tir_workflow_uses_frozen_prompt_without_mutating_sample(monkeypatch):
+    workflow = TIRWorkflow(
+        reward_fn=math_reward_fn,
+        gconfig=GenerationHyperparameters(max_new_tokens=32, max_tokens=256),
+        tokenizer=FakeTokenizer(),
+        tir_config=TIRConfig(max_turns=2, max_length=2000, is_chat_model=False),
+        prompt_template="Task: {prompt} End",
+    )
+    seen = []
+
+    async def capture(_engine, prompt_ids, _data, _tool_manager):
+        seen.append(workflow.tokenizer.decode(prompt_ids))
+        return {"ok": True}
+
+    monkeypatch.setattr(workflow, "_multi_round_response", capture)
+    sample = {"messages": [{"role": "user", "content": "What is 2 + 3?"}]}
+    try:
+        assert await workflow.arun_episode(object(), sample) == {"ok": True}
+    finally:
+        await workflow.tool_manager.acleanup()
+    assert seen == ["Task: What is 2 + 3? End"]
+    assert sample == {"messages": [{"role": "user", "content": "What is 2 + 3?"}]}
+
+
+def test_tir_workflow_rejects_ambiguous_prompt():
+    with pytest.raises(ValueError, match="exactly one"):
+        TIRWorkflow(
+            reward_fn=math_reward_fn,
+            gconfig=GenerationHyperparameters(max_new_tokens=32, max_tokens=256),
+            tokenizer=FakeTokenizer(),
+            tir_config=TIRConfig(is_chat_model=False),
+            prompt_template="Task: {prompt} Answer: {answer}",
+        )
+
+
+def test_tir_final_box_requires_complete_model_answer():
+    assert has_complete_boxed_answer("The answer is \\boxed{\\frac{5}{3}}")
+    assert not has_complete_boxed_answer("The answer is \\boxed{\\frac{5}{3}")
+    assert not has_complete_boxed_answer("\\boxed{3} but more work remains")
+    assert not has_complete_boxed_answer("\\boxed{}")
 
 
 def test_data_loading():

@@ -5,15 +5,15 @@ from __future__ import annotations
 import importlib.util
 import re
 
-from areal.utils import logging
-
-from tools import (  # isort: skip
+from examples.tir.tools import (
     BaseTool,
     CalculatorTool,
     PythonTool,
     ToolCallStatus,
     ToolType,
 )
+
+from areal.utils import logging
 
 logger = logging.getLogger("Tool Manager")
 
@@ -24,7 +24,7 @@ def _build_daytona_python_tool(timeout: int, debug_mode: bool) -> BaseTool:
             "daytona_python requires the optional 'daytona' dependency. Install it with `uv sync --extra sandbox`."
         )
 
-    from tools.daytona_python_tool import DaytonaPythonTool
+    from examples.tir.tools.daytona_python_tool import DaytonaPythonTool
 
     return DaytonaPythonTool(timeout, debug_mode)
 

@@ -1,4 +1,6 @@
+import ast
 import re
+from decimal import Decimal, localcontext
 from typing import Any
 
 from areal.utils import logging
@@ -55,14 +57,45 @@ class CalculatorTool(BaseTool):
             return "dummy calculator output", ToolCallStatus.SUCCESS
 
         try:
-            # Simple mathematical expression calculation
-            safe_pattern = r"^[0-9+\-*/().\s]+$"
-            if not re.match(safe_pattern, expression):
+            if len(expression) > 200 or not re.fullmatch(
+                r"[0-9+\-*/().\s]+", expression
+            ):
                 return "Error: Invalid expression", ToolCallStatus.ERROR
-
-            # Use eval for calculation (in controlled environment)
-            result = eval(expression)
-            return str(result), ToolCallStatus.SUCCESS
+            tree = ast.parse(expression, mode="eval")
+            if sum(1 for _ in ast.walk(tree)) > 64:
+                return "Error: Expression is too complex", ToolCallStatus.ERROR
+            with localcontext() as context:
+                context.prec = 32
+                result = self._eval_ast(tree.body)
+                return format(result.normalize(), "f"), ToolCallStatus.SUCCESS
 
         except Exception as e:
             return f"Error: {str(e)}", ToolCallStatus.ERROR
+
+    @classmethod
+    def _eval_ast(cls, node: ast.AST) -> Decimal:
+        limit = Decimal("1e12")
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            result = Decimal(str(node.value))
+        elif isinstance(node, ast.UnaryOp) and isinstance(
+            node.op, (ast.UAdd, ast.USub)
+        ):
+            operand = cls._eval_ast(node.operand)
+            result = operand if isinstance(node.op, ast.UAdd) else -operand
+        elif isinstance(node, ast.BinOp):
+            left, right = cls._eval_ast(node.left), cls._eval_ast(node.right)
+            if isinstance(node.op, ast.Add):
+                result = left + right
+            elif isinstance(node.op, ast.Sub):
+                result = left - right
+            elif isinstance(node.op, ast.Mult):
+                result = left * right
+            elif isinstance(node.op, ast.Div):
+                result = left / right
+            else:
+                raise ValueError("Unsupported calculator operator")
+        else:
+            raise ValueError("Unsupported calculator syntax")
+        if not result.is_finite() or abs(result) > limit:
+            raise ValueError("Calculator value exceeds its limit")
+        return result

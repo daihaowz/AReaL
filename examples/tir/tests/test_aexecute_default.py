@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from tools import BaseTool, ToolCallStatus, ToolDescription, ToolMarkers, ToolType
+
+from examples.tir.tools import (
+    BaseTool,
+    ToolCallStatus,
+    ToolDescription,
+    ToolMarkers,
+    ToolType,
+)
 
 
 class DummyTool(BaseTool):

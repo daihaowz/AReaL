@@ -7,8 +7,9 @@ import importlib.util
 import os
 
 import pytest
-from tool_manager import ToolManager
-from tools import ToolCallStatus
+
+from examples.tir.tool_manager import ToolManager
+from examples.tir.tools import ToolCallStatus
 
 
 def _has_daytona_credentials() -> bool:

@@ -1,13 +1,13 @@
 import sys
 
+from examples.tir.tir_workflow import TIRGRPOConfig
+
 from areal import PPOTrainer
 from areal.api.cli_args import load_expr_config
 from areal.dataset import get_custom_dataset
 from areal.reward import get_math_verify_worker
 from areal.utils import logging
 from areal.utils.hf_utils import load_hf_tokenizer
-
-from tir_workflow import TIRGRPOConfig  # isort: skip
 
 logger = logging.getLogger("TIR Training")
 

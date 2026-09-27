@@ -1,11 +1,14 @@
 import ast
 import copy
-import re
 import uuid
+from string import Formatter
 from typing import Any
 
 import torch
 from transformers import PreTrainedTokenizerFast
+
+from examples.tir.prompts import SYSTEM_PROMPT, TORL_PROMPT, has_complete_boxed_answer
+from examples.tir.tool_manager import ToolCallStatus, ToolManager
 
 from areal import workflow_context
 from areal.api import (
@@ -23,9 +26,6 @@ from areal.api.cli_args import (
 )
 from areal.utils import logging, stats_tracker
 from areal.utils.hf_utils import apply_chat_template
-
-from prompts import ANSWER, SYSTEM_PROMPT, TORL_PROMPT  # isort: skip
-from tool_manager import ToolCallStatus, ToolManager  # isort: skip
 
 logger = logging.getLogger("TIR workflow")
 
@@ -54,6 +54,7 @@ class TIRWorkflow(RolloutWorkflow):
         tokenizer: PreTrainedTokenizerFast | str,
         tir_config: TIRConfig,
         enable_thinking: bool = False,
+        prompt_template: str | None = None,
     ):
         super().__init__()
         if isinstance(tokenizer, str):
@@ -69,10 +70,22 @@ class TIRWorkflow(RolloutWorkflow):
         self.tokenizer = tokenizer
         self.tool_timeout = tir_config.tool_timeout
         self.enable_tools = tir_config.enable_tools
+        self.is_chat_model = tir_config.is_chat_model
+        if prompt_template is not None and self.is_chat_model:
+            raise ValueError("Custom TIR prompt templates require non-chat mode")
+        self.prompt_template = (
+            prompt_template if prompt_template is not None else TORL_PROMPT
+        )
+        fields = [
+            field for _, field, _, _ in Formatter().parse(self.prompt_template) if field
+        ]
+        if fields != ["prompt"]:
+            raise ValueError(
+                "TIR prompt template must contain exactly one {prompt} field"
+            )
         self.tool_manager = ToolManager(
             self.tool_timeout, self.enable_tools, debug_mode=False
         )
-        self.is_chat_model = tir_config.is_chat_model
         self.max_turns = tir_config.max_turns
         self.max_length = tir_config.max_length
         self.enable_thinking = enable_thinking
@@ -111,7 +124,7 @@ class TIRWorkflow(RolloutWorkflow):
         # cleanup must run even when generation or reward computation fails.
         try:
             # Initialize conversation history
-            messages = data["messages"]
+            messages = [dict(message) for message in data["messages"]]
 
             # Add system prompt with tool usage instructions
             system_prompt = SYSTEM_PROMPT.format(
@@ -133,7 +146,7 @@ class TIRWorkflow(RolloutWorkflow):
                 )
             else:
                 input_ids = self.tokenizer.encode(
-                    TORL_PROMPT.format(prompt=messages[1]["content"]),
+                    self.prompt_template.format(prompt=messages[1]["content"]),
                     add_special_tokens=False,
                 )
 
@@ -150,6 +163,7 @@ class TIRWorkflow(RolloutWorkflow):
 
         prompt_str = self.tokenizer.decode(prompt_ids)
         completions_str = ""
+        model_generated_str = ""
         has_tool = False
         tool_call_count = 0
         tool_success_count = 0
@@ -185,7 +199,11 @@ class TIRWorkflow(RolloutWorkflow):
 
             cur_completions_str = self.tokenizer.decode(resp.output_tokens)
             completions_str += cur_completions_str
+            model_generated_str += cur_completions_str
             output_ids.extend(resp.output_tokens)
+
+            if not resp.output_tokens:
+                break
 
             # End token, truncate
             if context_ids[-1] in [
@@ -195,7 +213,7 @@ class TIRWorkflow(RolloutWorkflow):
                 break
 
             # If answer appears, truncate immediately
-            if re.search(ANSWER, cur_completions_str):
+            if has_complete_boxed_answer(model_generated_str):
                 break
 
             # State transition logic: detect if tool start marker is encountered
@@ -247,7 +265,7 @@ class TIRWorkflow(RolloutWorkflow):
 
         reward = await self.async_reward_fn(
             prompt_str,
-            completions_str,
+            model_generated_str,
             prompt_ids,
             output_ids,
             tool_using=has_tool,
@@ -290,8 +308,13 @@ class TIRWorkflow(RolloutWorkflow):
             stop_markers = [marker for marker in self.end_markers]
 
         # Set generation config, add tool call stop tokens
+        remaining = max_len - len(input_ids)
+        if remaining < 1:
+            raise ValueError("TIR generation has no remaining context budget")
         gconfig = self.gconfig.new(
-            n_samples=1, stop=[marker for marker in stop_markers]
+            n_samples=1,
+            max_new_tokens=min(self.gconfig.max_new_tokens, remaining),
+            stop=[marker for marker in stop_markers],
         )
 
         # Generate response

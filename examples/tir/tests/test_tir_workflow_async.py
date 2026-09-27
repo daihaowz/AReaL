@@ -7,10 +7,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-import tir_workflow as tir_workflow_module
-from tir_workflow import TIRWorkflow
-from tool_manager import ToolCallStatus
 
+from examples.tir import tir_workflow as tir_workflow_module
+from examples.tir.tir_workflow import TIRWorkflow
+from examples.tir.tool_manager import ToolCallStatus
+
+from areal.api.cli_args import GenerationHyperparameters
 from areal.api.io_struct import ModelResponse
 
 
@@ -105,3 +107,59 @@ async def test_tir_workflow_invokes_aexecute(monkeypatch):
     assert result["rewards"].item() == 1.0
     assert stats_calls == [{"tool_call_count": 1, "tool_success_count": 1}]
     assert aexecute_calls == ["```python\nprint(1)\n```"]
+
+
+@pytest.mark.asyncio
+async def test_tir_generation_caps_new_tokens_at_remaining_context() -> None:
+    workflow = object.__new__(TIRWorkflow)
+    workflow.tokenizer = FakeTokenizer()
+    workflow.gconfig = GenerationHyperparameters(max_new_tokens=10, max_tokens=100)
+    workflow.start_markers = ["<calculator>"]
+    workflow.end_markers = ["</calculator>"]
+
+    class FakeEngine:
+        async def agenerate(self, request):
+            assert request.gconfig.max_new_tokens == 2
+            return ModelResponse(
+                output_tokens=[ord("3")],
+                output_logprobs=[0.0],
+                output_versions=[1],
+                stop_reason="stop",
+            )
+
+    response, _ = await workflow._generate_response(FakeEngine(), [1, 2, 3, 4], 6, True)
+    assert response.output_tokens == [ord("3")]
+
+
+@pytest.mark.asyncio
+async def test_tir_empty_generation_returns_a_trajectory(monkeypatch) -> None:
+    workflow = object.__new__(TIRWorkflow)
+    workflow.tokenizer = FakeTokenizer()
+    workflow.max_turns = 2
+    workflow.max_length = 20
+    workflow.async_reward_fn = lambda *args, **kwargs: _zero_reward()
+    workflow.tool_manager = SimpleNamespace()
+
+    async def _zero_reward():
+        return 0.0
+
+    async def empty_response(*_args):
+        response = ModelResponse(
+            output_tokens=[], output_logprobs=[], output_versions=[], stop_reason="stop"
+        )
+        return response, response.stop_reason
+
+    monkeypatch.setattr(workflow, "_generate_response", empty_response)
+    monkeypatch.setattr(
+        tir_workflow_module.stats_tracker,
+        "get",
+        lambda _scope: SimpleNamespace(scalar=lambda **_kwargs: None),
+    )
+    monkeypatch.setattr(
+        tir_workflow_module.workflow_context, "stat_scope", lambda: "test"
+    )
+    trajectory = await workflow._multi_round_response(
+        engine=None, prompt_ids=[ord("?")], data={}
+    )
+    assert trajectory["rewards"].item() == 0.0
+    assert trajectory["loss_mask"].sum().item() == 0

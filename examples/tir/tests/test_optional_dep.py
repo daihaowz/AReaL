@@ -6,7 +6,7 @@ import importlib
 import importlib.util
 import sys
 
-import tools as tools_module
+from examples.tir import tools as tools_module
 
 from areal.infra.sandbox import DaytonaRunner
 

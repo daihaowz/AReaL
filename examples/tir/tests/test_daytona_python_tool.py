@@ -7,9 +7,10 @@ import importlib.util
 import os
 
 import pytest
-from tool_manager import ToolRegistry
-from tools import ToolCallStatus, ToolType
-from tools.daytona_python_tool import DaytonaPythonTool
+
+from examples.tir.tool_manager import ToolRegistry
+from examples.tir.tools import ToolCallStatus, ToolType
+from examples.tir.tools.daytona_python_tool import DaytonaPythonTool
 
 
 def _has_daytona_sdk() -> bool:

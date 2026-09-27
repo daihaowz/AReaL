@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import tool_manager as tool_manager_module
-from tool_manager import ToolRegistry
-from tools import ToolType
-from tools.python_tool import PythonTool
+from examples.tir import tool_manager as tool_manager_module
+from examples.tir.tool_manager import ToolRegistry
+from examples.tir.tools import ToolType
+from examples.tir.tools.python_tool import PythonTool
 
 
 def test_tool_registry_only_constructs_enabled_tools(monkeypatch):

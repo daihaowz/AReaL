@@ -26,4 +26,21 @@ Assistant:
 
 TORL_PROMPT = "A conversation between User and Assistant. The user asks a question, and the Assistant solves it.\nUser:Please integrate natural language reasoning with programs to solve the problem blow, and put your final answer within \\boxed{{}}..\n{prompt}\nAssistant:"
 
-ANSWER = r"\boxed{.*?}"
+
+def has_complete_boxed_answer(text: str) -> bool:
+    """A final model-written boxed expression may contain nested LaTeX braces."""
+
+    marker = "\\boxed{"
+    position = text.rfind(marker)
+    if position < 0:
+        return False
+    depth = 1
+    start = position + len(marker)
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return bool(text[start:index].strip()) and not text[index + 1 :].strip()
+    return False
