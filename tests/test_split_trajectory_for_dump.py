@@ -124,6 +124,33 @@ class TestComputeOutputVersions:
 
 class TestDumpTrajectory:
     @pytest.mark.asyncio
+    async def test_keeps_failed_tool_episode_ending_with_observation(self, tmp_path):
+        executor = WorkflowExecutor.__new__(WorkflowExecutor)
+        executor._get_dump_dir = lambda _is_eval: str(tmp_path)
+        executor._get_tokenizer = _FakeTokenizer
+        traj = {
+            "input_ids": torch.tensor([[1, 2, 3, 4]]),
+            "rewards": torch.tensor([0.0]),
+            "loss_mask": torch.tensor([[0, 1, 1, 0]]),
+            "attention_mask": torch.ones((1, 4), dtype=torch.bool),
+            "versions": torch.tensor([[-1, 4, 4, -1]]),
+        }
+
+        success, reason = await executor._dump_trajectory(
+            traj, task_id=10, is_eval=False, source_task_id="frozen-failure"
+        )
+
+        assert success, reason
+        record = json.loads((tmp_path / "4" / "10.jsonl").read_text())
+        assert record["source_task_id"] == "frozen-failure"
+        assert record["reward"] == 0.0
+        assert [segment["role"] for segment in record["segments"]] == [
+            "prompt",
+            "gen",
+            "context",
+        ]
+
+    @pytest.mark.asyncio
     async def test_writes_ordered_sample_metadata_and_promotes_join_keys(
         self, tmp_path
     ):

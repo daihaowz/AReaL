@@ -986,10 +986,10 @@ class WorkflowExecutor:
                 gen_count += 1
             idx = j
 
-        # Only decode segments for multi-turn trajectories so single-turn
-        # keeps the same 2-decode cost as before.
+        # A trailing tool observation also needs segments: its text is not
+        # model-generated even when there was only one generation run.
         segments: list[dict[str, Any]] | None = None
-        if gen_count > 1:
+        if gen_count > 1 or (gen_count == 1 and mask[-1] == 0):
             raw_segments: list[dict[str, Any]] = []
             idx = 0
             seen_prompt = False
@@ -1027,6 +1027,7 @@ class WorkflowExecutor:
         task_id: int,
         is_eval: bool,
         sample_metadata: list[dict[str, Any]] | None = None,
+        source_task_id: str | None = None,
     ) -> tuple[bool, str]:
         if traj is None:
             return False, "trajectory is None"
@@ -1106,6 +1107,15 @@ class WorkflowExecutor:
                     "sample metadata count does not match trajectory batch size: "
                     f"{len(sample_metadata)} != {batch_size}",
                 )
+            if source_task_id is not None:
+                sample_metadata = [
+                    {"source_task_id": source_task_id, **metadata}
+                    for metadata in (
+                        sample_metadata
+                        if sample_metadata is not None
+                        else [{} for _ in range(batch_size)]
+                    )
+                ]
 
             file_path = os.path.join(version_dir, f"{task_id}.jsonl")
             async with aiofiles.open(file_path, "a") as f:
@@ -1115,8 +1125,8 @@ class WorkflowExecutor:
                         continue
                     ids = input_ids[i, :seqlen].tolist()
                     mask = loss_mask[i, :seqlen].tolist()
-                    # Skip samples with empty completions
-                    if mask[-1] != 1:
+                    # A tool observation can end a failed episode after model output.
+                    if not any(mask):
                         continue
 
                     if all_versions is not None:
@@ -1157,6 +1167,7 @@ class WorkflowExecutor:
                             "arena_task_id",
                             "arena_status",
                             "harness_outcome_code",
+                            "source_task_id",
                         ):
                             if key in metadata:
                                 record[key] = metadata[key]
@@ -1418,11 +1429,18 @@ class WorkflowExecutor:
 
                 # Dump trajectory to file
                 if self.config.dump_to_file:
+                    source_task_id = (
+                        workflow_data.get("task_id")
+                        if isinstance(workflow_data, dict)
+                        and isinstance(workflow_data.get("task_id"), str)
+                        else None
+                    )
                     dump_success, dump_reason = await self._dump_trajectory(
                         traj,
                         task_id,
                         pending_task.is_eval,
                         sample_metadata=trajectory_metadata,
+                        source_task_id=source_task_id,
                     )
                     if not dump_success:
                         self.logger.warning(

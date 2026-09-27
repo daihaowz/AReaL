@@ -73,7 +73,9 @@ async def test_dump_plain_interaction_accepts_rollout_and_writes_file(tmp_path):
     )
     task = executor._create_workflow_task(
         _RolloutTaskInput(
-            task_id=1, data={}, workflow=_TrajectoryWorkflow({"turn": interaction})
+            task_id=1,
+            data={"task_id": "frozen-task-1"},
+            workflow=_TrajectoryWorkflow({"turn": interaction}),
         )
     )
 
@@ -84,6 +86,40 @@ async def test_dump_plain_interaction_accepts_rollout_and_writes_file(tmp_path):
     manager.on_rollout_rejected.assert_not_called()
     record = json.loads((tmp_path / "0" / "1.jsonl").read_text())
     assert record["reward"] == 1.0
+    assert record["source_task_id"] == "frozen-task-1"
+
+
+@pytest.mark.asyncio
+async def test_dump_tensor_trajectory_preserves_frozen_task_id(tmp_path):
+    trajectory = {
+        "input_ids": torch.tensor([[1, 2, 3]]),
+        "rewards": torch.tensor([1.0]),
+        "loss_mask": torch.tensor([[0, 1, 1]]),
+        "attention_mask": torch.ones((1, 3), dtype=torch.bool),
+        "versions": torch.tensor([[-1, 4, 4]]),
+    }
+    executor, manager = _executor()
+    executor.config.dump_to_file = True
+    executor._get_dump_dir = lambda _is_eval: str(tmp_path)
+    executor._get_tokenizer = lambda: MagicMock(
+        decode=lambda ids, skip_special_tokens=False: str(ids)
+    )
+    task = executor._create_workflow_task(
+        _RolloutTaskInput(
+            task_id=7,
+            data={"task_id": "frozen-task-7"},
+            workflow=_TrajectoryWorkflow(trajectory),
+        )
+    )
+
+    result = await task()
+
+    assert result is not None
+    manager.on_rollout_accepted.assert_called_once_with()
+    record = json.loads((tmp_path / "4" / "7.jsonl").read_text())
+    assert record["task_id"] == 7
+    assert record["source_task_id"] == "frozen-task-7"
+    assert record["metadata"] == {"source_task_id": "frozen-task-7"}
 
 
 @pytest.mark.asyncio
