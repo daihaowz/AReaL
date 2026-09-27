@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import gc
+import os
 import sys
 
 import pytest
@@ -106,6 +107,32 @@ def test_prepare_worker_specs_expands_single_spec(tmp_path):
     schedulings = scheduler._prepare_worker_specs("actor", 2, [spec])
 
     assert schedulings == [spec, spec]
+
+
+def test_prepare_worker_specs_preserves_explicit_remote_pythonpath(
+    tmp_path, monkeypatch
+):
+    scheduler = _scheduler(tmp_path)
+    controller_path = str(tmp_path / "controller/src")
+    worker_path = os.pathsep.join(
+        (str(tmp_path / "worker/areal-rsi/src"), str(tmp_path / "worker/areal"))
+    )
+    monkeypatch.setattr(
+        ray_scheduler,
+        "get_env_vars",
+        lambda: {"PYTHONPATH": controller_path, "AREAL_DEFAULT": "1"},
+    )
+    spec = SchedulingSpec(
+        cpu=1,
+        gpu=1,
+        mem=1,
+        env_vars={"PYTHONPATH": worker_path},
+    )
+
+    scheduler._prepare_worker_specs("actor", 1, [spec])
+
+    assert spec.env_vars["PYTHONPATH"] == worker_path
+    assert spec.env_vars["AREAL_DEFAULT"] == "1"
 
 
 def test_empty_scheduling_spec_fails(tmp_path):

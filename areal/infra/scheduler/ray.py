@@ -948,6 +948,9 @@ class RayScheduler(Scheduler):
 
         # Amend environment variables
         for sch in schedulings:
+            # Explicit worker paths must win over paths from a CPU controller,
+            # which may run on another host with a different filesystem layout.
+            user_env = dict(sch.env_vars)
             if sch.additional_bash_cmds:
                 raise ValueError(
                     "RayScheduler does not support SchedulingSpec.additional_bash_cmds. "
@@ -962,6 +965,7 @@ class RayScheduler(Scheduler):
                 existing_env_vars=sch.env_vars,
             )
             sch.env_vars.update(thread_env)
+            sch.env_vars.update(user_env)
 
         if len(schedulings) == 1:
             # Expand single spec to all workers
