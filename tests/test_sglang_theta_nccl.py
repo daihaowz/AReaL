@@ -25,6 +25,9 @@ def launched_servers(monkeypatch):
         return SimpleNamespace(pid=1)
 
     monkeypatch.setattr(sglang_remote.subprocess, "Popen", launch)
+    monkeypatch.setattr(
+        sglang_remote.pkg_version, "is_version_greater_or_equal", lambda *_args: True
+    )
     return calls
 
 
@@ -86,6 +89,16 @@ def test_awex_environment_keeps_plugin_entrypoint(monkeypatch, launched_servers)
     SGLangBackend().launch_server({"model_path": "model"})
 
     assert launched_servers[0][0][2] == "areal.engine.awex.sglang_plugin"
+
+
+def test_theta_server_checks_its_own_sglang_version(monkeypatch, launched_servers):
+    monkeypatch.setenv("AREAL_SGLANG_FORK", "theta")
+    monkeypatch.setattr(
+        sglang_remote.pkg_version, "is_version_greater_or_equal", lambda *_args: False
+    )
+    with pytest.raises(RuntimeError, match="sglang>=0.5.10.post1"):
+        SGLangBackend().launch_server({"model_path": "model"})
+    assert launched_servers == []
 
 
 @pytest.mark.parametrize(

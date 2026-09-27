@@ -35,7 +35,7 @@ from areal.infra import RemoteInfEngine, RolloutController, WorkflowExecutor
 from areal.infra.platforms import current_platform
 from areal.infra.utils.launcher import TRITON_CACHE_PATH
 from areal.infra.workflow_executor import WorkflowTaskResult
-from areal.utils import perf_tracer, stats_tracker
+from areal.utils import perf_tracer, pkg_version, stats_tracker
 from areal.utils.logging import getLogger
 from areal.utils.network import format_host_for_url
 
@@ -479,6 +479,10 @@ class SGLangBackend:
                     awex_gpus_per_server,
                     base_gpu_id,
                 )
+        if theta_native and not pkg_version.is_version_greater_or_equal(
+            "sglang", "0.5.10.post1"
+        ):
+            raise RuntimeError("Needs sglang>=0.5.10.post1 to run the code.")
         cmd = SGLangConfig.build_cmd_from_args(server_args)
         _env = self.build_server_env(os.environ)
         _env.setdefault("PYTHONFAULTHANDLER", "1")

@@ -898,9 +898,7 @@ Trackio is a lightweight, local-first experiment tracking library with a
 wandb-compatible API. Dashboards can be viewed locally or deployed to Hugging Face
 Spaces.
 
-```
 See: https://github.com/gradio-app/trackio
-```
 
 | Parameter  | Type           | Default      | Description |
 | ---------- | -------------- | ------------ | ----------- |
@@ -1370,30 +1368,25 @@ Configuration for perf tracer emission.
 Unified configuration for sample filtering based on policy divergence.
 
 Filters tokens/sequences where the divergence between proximal policy and behavior
-policy exceeds a threshold, via two action modes: - 'mask': zero out loss_mask
-(rejection, exclude from gradient) - 'clamp': clamp importance weight to bounds
-(truncation, bounded gradient)
+policy exceeds a threshold, via two action modes:
 
-```
-Supports direct ratio bounds and KL divergence estimators (K1/K2/K3),
-at both token-level and sequence-level granularity.
+- 'mask': zero out loss_mask (rejection, exclude from gradient)
+- 'clamp': clamp importance weight to bounds (truncation, bounded gradient)
 
-Replaces the removed ``behave_imp_weight_cap`` and ``behave_imp_weight_mode``.
+Supports direct ratio bounds and KL divergence estimators (K1/K2/K3), at both
+token-level and sequence-level granularity.
 
-Attributes:
-    level: Filtering granularity ('token' or 'sequence'). When ``level='sequence'``
-        and ``metric='ratio'``, both the filtering decision and the correction
-        weight (behave_imp_weight) use the sequence-level geometric mean,
-        matching the old ``sequence_mask``/``sequence_truncate`` semantics.
-    action: Action mode ('mask' or 'clamp').
-    metric: Divergence metric ('ratio', 'kl_k1', 'kl_k2', 'kl_k3').
-    agg: Aggregation method for sequence-level ('sum', 'mean', 'max').
-        For 'ratio' metric, aggregation is performed in log space (geometric
-        mean/sum) to avoid the "length trap" and match GSPO semantics.
-        For KL metrics, aggregation is arithmetic.
-    upper: Upper bound for filtering.
-    lower: Lower bound for filtering (optional).
-```
+Replaces the removed `behave_imp_weight_cap` and `behave_imp_weight_mode`.
+
+Attributes: level: Filtering granularity ('token' or 'sequence'). When
+`level='sequence'` and `metric='ratio'`, both the filtering decision and the correction
+weight (behave_imp_weight) use the sequence-level geometric mean, matching the old
+`sequence_mask`/`sequence_truncate` semantics. action: Action mode ('mask' or 'clamp').
+metric: Divergence metric ('ratio', 'kl_k1', 'kl_k2', 'kl_k3'). agg: Aggregation method
+for sequence-level ('sum', 'mean', 'max'). For 'ratio' metric, aggregation is performed
+in log space (geometric mean/sum) to avoid the "length trap" and match GSPO semantics.
+For KL metrics, aggregation is arithmetic. upper: Upper bound for filtering. lower:
+Lower bound for filtering (optional).
 
 | Parameter | Type          | Default   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | --------- | ------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

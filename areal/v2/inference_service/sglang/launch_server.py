@@ -13,8 +13,16 @@ from __future__ import annotations
 import os
 import sys
 
+from areal.utils import pkg_version
+
+
+def require_sglang_server_version() -> None:
+    if not pkg_version.is_version_greater_or_equal("sglang", "0.5.10.post1"):
+        raise RuntimeError("Needs sglang>=0.5.10.post1 to run the code.")
+
 
 def areal_launch_server(server_args) -> None:
+    require_sglang_server_version()
     from sglang.srt.entrypoints.engine import Engine, init_tokenizer_manager
     from sglang.srt.entrypoints.http_server import (
         _execute_server_warmup,
@@ -80,6 +88,7 @@ def areal_launch_server(server_args) -> None:
 
 
 if __name__ == "__main__":
+    require_sglang_server_version()
     from sglang.srt.server_args import prepare_server_args
     from sglang.srt.utils import kill_process_tree
     from sglang.srt.utils.common import suppress_noisy_warnings

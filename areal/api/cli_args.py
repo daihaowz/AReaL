@@ -2518,8 +2518,6 @@ class SGLangConfig:
             args["host"] = host
         if port is not None:
             args["port"] = port
-        if not pkg_version.is_version_greater_or_equal("sglang", "0.5.10.post1"):
-            raise RuntimeError("Needs sglang>=0.5.10.post1 to run the code.")
         return args
 
 
